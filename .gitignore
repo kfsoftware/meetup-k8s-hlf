@@ -1,5 +1,6 @@
 .idea
 crypto-config
 *.yaml
+!hlf-operator.yaml
 *.json
 *.pb

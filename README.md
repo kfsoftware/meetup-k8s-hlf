@@ -1,13 +1,13 @@
 # Deploying Hyperledger Fabric on Kubernetes 2.3+ with a Kubernetes Operator
 
-## Architecture
-
 ## Pre requisites
 
 - Kubernetes cluster 1.15+
 - Kubectl HLF plugin
 - Helm
-- Golang
+
+## Nice to haves
+- Lens(https://github.com/lensapp/lens)
 
 ## Provisioning a cluster
 If you don't have an existing cluster, you can provision one with [KiND](https://github.com/kubernetes-sigs/kind).):
@@ -16,28 +16,77 @@ If you don't have an existing cluster, you can provision one with [KiND](https:/
 kind create cluster --image=kindest/node:v1.22.2
 ```
 
+
+Configure kubectl:
+```bash
+kind get kubeconfig > ~/.kube/hlf-kind
+export KUBECONFIG=~/.kube/hlf-kind
+gedit ~/.kube/hlf-kind
+```
+Check:
+```bash
+kubectl get nodes
+kubectl get pods
+```
+
 ## Installing the HLF operator
 
+Add helm repository, source code here: https://github.com/kfsoftware/hlf-helm-charts 
 ```bash
-helm install hlf-operator kfs/hlf-operator
+helm repo add kfs https://kfsoftware.github.io/hlf-helm-charts --force-update 
 ```
-Upgrade:
+
+Install chart
+```bash
+helm install hlf-operator -f hlf-operator.yaml kfs/hlf-operator
+```
+In case you change the values, you can upgrade:
 ```bash
 helm upgrade hlf-operator -f ./hlf-operator.yaml kfs/hlf-operator
 ```
 
+Checks
+
+```bash
+# check CRDs
+kubectl get crds
+
+# check pods until ready
+kubectl get pods -w
+
+# check logs if there's a problem
+kubectl logs hlf-operator-controller-manager-75dbc94f58-rvnnl -c manager -f
+```
+
 ## Blockchain network
+
+Create initial folders:
+```bash
+mkdir -p resources/org1
+mkdir -p resources/org2
+mkdir -p resources/orderer/ordererorg1
+```
+
+
+
+## Peer organization
+
 Generate CA manifest:
 ```
 kubectl hlf ca create --storage-class=standard --capacity=2Gi --name=org1-ca \
     --enroll-id=enroll --enroll-pw=enrollpw  --output > resources/org1/ca.yaml
 ```
-
-## Peer organization
-
 Create CA
 ```bash
 kubectl apply -f ./resources/org1/ca.yaml
+```
+
+Checks
+
+```bash
+kubectl get fabriccas.hlf.kungfusoftware.es -A
+# check pods until ready
+kubectl get pods -w
 ```
 
 Register user for the peers
@@ -56,6 +105,36 @@ Create Peer
 ```bash
 kubectl apply -f ./resources/org1/peer1.yaml
 ```
+
+Checks
+
+```bash
+kubectl get fabricpeers.hlf.kungfusoftware.es -A
+# check pods until ready
+kubectl get pods -w
+```
+
+## Prepare network config for org1
+
+Register user
+```bash
+kubectl hlf ca register --name=org1-ca --user=admin --secret=adminpw --type=admin \
+ --enroll-id enroll --enroll-secret=enrollpw --mspid Org1MSP  
+```
+Enroll user
+```bash
+kubectl hlf ca enroll --name=org1-ca --user=admin --secret=adminpw --mspid Org1MSP \
+        --ca-name ca  --output peer-org1.yaml
+```
+Get connection config yaml
+```bash
+kubectl hlf inspect --output org1.yaml -o Org1MSP
+```
+Add user key and cert to org1.yaml from peer-org1.yaml
+```bash
+kubectl hlf utils adduser --userPath=peer-org1.yaml --config=org1.yaml --username=admin --mspid=Org1MSP
+```
+
 Install chaincode
 ```bash
 kubectl hlf chaincode install --path=./chaincodes/fabcar/go \
@@ -103,6 +182,10 @@ Create Ordering Service
 kubectl apply -f ./resources/orderer/ordererorg1/orderer.yaml
 ```
 
+Check pods:
+```bash
+kubectl get pods -w
+```
 
 ## Create a channel
 Create connection config yaml
@@ -128,6 +211,11 @@ Generate channel block
 kubectl hlf channel generate --output=demo.block --name=demo --organizations Org1MSP --ordererOrganizations OrdererMSP
 ```
 
+Visualize channel:
+```bash
+configtxlator proto_decode --input demo.block --type common.Block --output block.json
+```
+
 Enroll user to submit the transaction
 
 ```bash
@@ -140,7 +228,6 @@ Join the orderer node with the channel block
 ```bash
 kubectl hlf ordnode join --block=demo.block --name=ordnode-1 --namespace=default --identity=admin-tls-ordservice.yaml
 ```
-
 
 
 ## Join peer to channel
@@ -200,20 +287,15 @@ Approve chaincode
 PACKAGE_ID=fabcar:0c616be7eebace4b3c2aa0890944875f695653dbf80bef7d95f3eed6667b5f40 # replace it with the package id of your chaincode
 kubectl hlf chaincode approveformyorg --config=org1.yaml --user=admin --peer=org1-peer0.default \
     --package-id=$PACKAGE_ID \
-    --version "1.0" --sequence 6 --name=fabcar \
-    --policy="OR('Org1MSP.member', 'Org2MSP.member')" --channel=demo
-
-kubectl hlf chaincode approveformyorg --config=org2.yaml --user=admin --peer=org2-peer0.default \
-    --package-id=$PACKAGE_ID \
-    --version "1.0" --sequence 6 --name=fabcar \
-    --policy="OR('Org1MSP.member', 'Org2MSP.member')" --channel=demo
+    --version "1.0" --sequence 1 --name=fabcar \
+    --policy="OR('Org1MSP.member')" --channel=demo
 ```
 
 Commit chaincode
 ```bash
 kubectl hlf chaincode commit --config=org1.yaml --mspid=Org1MSP --user=admin \
-    --version "1.0" --sequence 6 --name=fabcar \
-    --policy="OR('Org1MSP.member', 'Org2MSP.member')" --channel=demo
+    --version "1.0" --sequence 1 --name=fabcar \
+    --policy="OR('Org1MSP.member')" --channel=demo
 ```
 
 Test chaincode
@@ -223,10 +305,14 @@ kubectl hlf chaincode invoke --config=org1.yaml \
     --chaincode=fabcar --channel=demo \
     --fcn=initLedger -a '[]'
 
-kubectl hlf chaincode invoke --config=org2.yaml \
-    --user=admin --peer=org2-peer0.default \
+```
+
+Query all cars:
+```bash
+kubectl hlf chaincode query --config=org1.yaml \
+    --user=admin --peer=org1-peer0.default \
     --chaincode=fabcar --channel=demo \
-    --fcn=initLedger -a '[]'
+    --fcn=QueryAllCars -a '[]'
 ```
 
 
@@ -351,3 +437,103 @@ kubectl hlf channel join --name=demo --config=org2.yaml \
     --user=admin -p=org2-peer0.default
 ```
 
+## Approve & Commit chaincode again
+
+
+Install chaincode
+```bash
+kubectl hlf chaincode install --path=./chaincodes/fabcar/go \
+    --config=org2.yaml --language=golang --label=fabcar --user=admin --peer=org2-peer0.default
+
+# this can take 3-4 minutes
+```
+
+Query approved chaincodes:
+```bash
+kubectl hlf chaincode queryinstalled --config=org2.yaml --user=admin --peer=org2-peer0.default
+```
+
+Approve chaincode
+```bash
+PACKAGE_ID=fabcar:0c616be7eebace4b3c2aa0890944875f695653dbf80bef7d95f3eed6667b5f40 # replace it with the package id of your chaincode
+kubectl hlf chaincode approveformyorg --config=org1.yaml --user=admin --peer=org1-peer0.default \
+    --package-id=$PACKAGE_ID \
+    --version "1.0" --sequence 2 --name=fabcar \
+    --policy="OR('Org1MSP.member', 'Org2MSP.member')" --channel=demo
+
+PACKAGE_ID=fabcar:0c616be7eebace4b3c2aa0890944875f695653dbf80bef7d95f3eed6667b5f40 # replace it with the package id of your chaincode
+kubectl hlf chaincode approveformyorg --config=org2.yaml --user=admin --peer=org2-peer0.default \
+    --package-id=$PACKAGE_ID \
+    --version "1.0" --sequence 2 --name=fabcar \
+    --policy="OR('Org1MSP.member', 'Org2MSP.member')" --channel=demo
+
+```
+
+Commit chaincode
+```bash
+kubectl hlf chaincode commit --config=org1.yaml --mspid=Org1MSP --user=admin \
+    --version "1.0" --sequence 2 --name=fabcar \
+    --policy="OR('Org1MSP.member', 'Org2MSP.member')" --channel=demo
+```
+
+Test chaincode
+```bash
+kubectl hlf chaincode invoke --config=org1.yaml \
+    --user=admin --peer=org1-peer0.default \
+    --chaincode=fabcar --channel=demo \
+    --fcn=initLedger -a '[]'
+
+```
+
+Query all cars:
+```bash
+kubectl hlf chaincode query --config=org1.yaml \
+    --user=admin --peer=org1-peer0.default \
+    --chaincode=fabcar --channel=demo \
+    --fcn=QueryAllCars -a '[]'
+```
+
+
+MISSING!!!!
+- Approve/Commit with the new organization
+- Test that it works
+- Add more consenters to the channel using the channel participation API
+
+
+## Add more orderers
+
+Generate Orderer manifest for second orderer
+```bash
+kubectl hlf ordnode create  --storage-class=standard --enroll-id=orderer --mspid=OrdererMSP \
+    --enroll-pw=ordererpw --capacity=2Gi --name=ordnode-2 --ca-name=ordererorg1-ca.default \
+    --output > resources/orderer/ordererorg1/orderer2.yaml
+```
+
+Create orderer2
+```bash
+kubectl apply -f ./resources/orderer/ordererorg1/orderer2.yaml
+```
+
+
+Generate Orderer manifest for third orderer
+```bash
+kubectl hlf ordnode create  --storage-class=standard --enroll-id=orderer --mspid=OrdererMSP \
+    --enroll-pw=ordererpw --capacity=2Gi --name=ordnode-3 --ca-name=ordererorg1-ca.default \
+    --output > resources/orderer/ordererorg1/orderer3.yaml
+```
+
+Create orderer3
+```bash
+kubectl apply -f ./resources/orderer/ordererorg1/orderer3.yaml
+```
+Join orderer2 and orderer3
+```bash
+kubectl hlf ordnode join --block=demo.block --name=ordnode-2 --namespace=default --identity=admin-tls-ordservice.yaml
+kubectl hlf ordnode join --block=demo.block --name=ordnode-3 --namespace=default --identity=admin-tls-ordservice.yaml
+```
+
+Fetch channel config
+```bash
+kubectl hlf channel inspect --channel=demo --config=org1.yaml \
+   --user=admin -p=org1-peer0.default > demo.json
+```
