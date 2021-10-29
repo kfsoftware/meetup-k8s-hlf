@@ -7,7 +7,13 @@
 - Helm
 
 ## Nice to haves
-- Lens(https://github.com/lensapp/lens)
+- Lens (https://github.com/lensapp/lens)
+
+# Installing the Kubectl HLF Plugin#
+```bash
+kubectl krew install hlf 
+```
+
 
 ## Provisioning a cluster
 If you don't have an existing cluster, you can provision one with [KiND](https://github.com/kubernetes-sigs/kind).):
@@ -92,13 +98,18 @@ kubectl get pods -w
 Register user for the peers
 
 ```bash
-kubectl hlf ca register --name=org1-ca --user=peer --secret=peerpw --type=peer \
- --enroll-id enroll --enroll-secret=enrollpw --mspid Org1MSP
+kubectl hlf ca register --name=org1-ca --user=peer \
+  --secret=peerpw --type=peer \
+ --enroll-id enroll --enroll-secret=enrollpw \
+ --mspid Org1MSP
 ```
 
 ```bash
-kubectl hlf peer create --storage-class=standard --enroll-id=peer --mspid=Org1MSP \
-       --enroll-pw=peerpw --capacity=5Gi --name=org1-peer0 --ca-name=org1-ca.default --output > resources/org1/peer1.yaml
+kubectl hlf peer create --storage-class=standard \
+    --enroll-id=peer --mspid=Org1MSP \
+    --enroll-pw=peerpw --capacity=5Gi \
+    --name=org1-peer0 --ca-name=org1-ca.default \
+    --output > resources/org1/peer1.yaml
 ```
 
 Create Peer
@@ -118,13 +129,16 @@ kubectl get pods -w
 
 Register user
 ```bash
-kubectl hlf ca register --name=org1-ca --user=admin --secret=adminpw --type=admin \
- --enroll-id enroll --enroll-secret=enrollpw --mspid Org1MSP  
+kubectl hlf ca register --name=org1-ca --user=admin \
+ --secret=adminpw --type=admin \
+ --enroll-id enroll --enroll-secret=enrollpw \
+ --mspid Org1MSP  
 ```
 Enroll user
 ```bash
-kubectl hlf ca enroll --name=org1-ca --user=admin --secret=adminpw --mspid Org1MSP \
-        --ca-name ca  --output peer-org1.yaml
+kubectl hlf ca enroll --name=org1-ca \
+   --user=admin --secret=adminpw --mspid Org1MSP \
+   --ca-name ca  --output peer-org1.yaml
 ```
 Get connection config yaml
 ```bash
@@ -132,7 +146,8 @@ kubectl hlf inspect --output org1.yaml -o Org1MSP
 ```
 Add user key and cert to org1.yaml from peer-org1.yaml
 ```bash
-kubectl hlf utils adduser --userPath=peer-org1.yaml --config=org1.yaml --username=admin --mspid=Org1MSP
+kubectl hlf utils adduser --userPath=peer-org1.yaml \
+    --config=org1.yaml --username=admin --mspid=Org1MSP
 ```
 
 Install chaincode
@@ -154,8 +169,10 @@ mkdir -p resources/orderer/ordererorg1
 ```
 Generate CA manifest
 ```bash
-kubectl hlf ca create --storage-class=standard --capacity=2Gi --name=ordererorg1-ca \
-    --enroll-id=enroll --enroll-pw=enrollpw  --output > resources/orderer/ordererorg1/ca.yaml
+kubectl hlf ca create --storage-class=standard \
+   --capacity=2Gi --name=ordererorg1-ca \
+   --enroll-id=enroll --enroll-pw=enrollpw  \
+   --output > resources/orderer/ordererorg1/ca.yaml
 ```
 
 Create CA
@@ -165,15 +182,19 @@ kubectl apply -f ./resources/orderer/ordererorg1/ca.yaml
 
 Register user for the orderer
 ```bash
-kubectl hlf ca register --name=ordererorg1-ca --user=orderer --secret=ordererpw \
-    --type=orderer --enroll-id enroll --enroll-secret=enrollpw --mspid=OrdererMSP
+kubectl hlf ca register --name=ordererorg1-ca \
+   --user=orderer --secret=ordererpw \
+   --type=orderer --enroll-id enroll \
+   --enroll-secret=enrollpw --mspid=OrdererMSP
 ```
 
 Generate Orderer manifest
 ```bash
-kubectl hlf ordnode create  --storage-class=standard --enroll-id=orderer --mspid=OrdererMSP \
-    --enroll-pw=ordererpw --capacity=2Gi --name=ordnode-1 --ca-name=ordererorg1-ca.default \
-    --output > resources/orderer/ordererorg1/orderer.yaml
+kubectl hlf ordnode create  --storage-class=standard \
+   --enroll-id=orderer --mspid=OrdererMSP \
+   --enroll-pw=ordererpw --capacity=2Gi \
+   --name=ordnode-1 --ca-name=ordererorg1-ca.default \
+   --output > resources/orderer/ordererorg1/orderer.yaml
 ```
 
 
@@ -190,17 +211,21 @@ kubectl get pods -w
 ## Create a channel
 Create connection config yaml
 ```bash
-kubectl hlf inspect --output ordservice.yaml -o OrdererMSP
+kubectl hlf inspect --output ordservice.yaml \
+ -o OrdererMSP
 ```
 Register user
 ```bash
-kubectl hlf ca register --name=ordererorg1-ca --user=admin --secret=adminpw \
-    --type=admin --enroll-id enroll --enroll-secret=enrollpw --mspid=OrdererMSP
+kubectl hlf ca register --name=ordererorg1-ca \
+   --user=admin --secret=adminpw \
+   --type=admin --enroll-id enroll \
+   --enroll-secret=enrollpw --mspid=OrdererMSP
 ```
 Enroll user to submit the transaction
 ```bash
-kubectl hlf ca enroll --name=ordererorg1-ca --user=admin --secret=adminpw --mspid OrdererMSP \
-        --ca-name ca  --output admin-ordservice.yaml
+kubectl hlf ca enroll --name=ordererorg1-ca \
+  --user=admin --secret=adminpw --mspid OrdererMSP \
+     --ca-name ca  --output admin-ordservice.yaml
 ``` 
 Add user from admin-ordservice.yaml to ordservice.yaml
 ```bash
@@ -208,25 +233,35 @@ kubectl hlf utils adduser --userPath=admin-ordservice.yaml --config=ordservice.y
 ```
 Generate channel block
 ```bash
-kubectl hlf channel generate --output=demo.block --name=demo --organizations Org1MSP --ordererOrganizations OrdererMSP
+kubectl hlf channel generate \
+  --output=demo.block --name=demo \
+  --organizations Org1MSP \
+  --ordererOrganizations OrdererMSP
+
 ```
 
 Visualize channel:
 ```bash
-configtxlator proto_decode --input demo.block --type common.Block --output block.json
+configtxlator proto_decode --input demo.block \
+  --type common.Block --output block.json
 ```
 
 Enroll user to submit the transaction
 
 ```bash
 # enroll using the TLS CA
-kubectl hlf ca enroll --name=ordererorg1-ca --namespace=default --user=admin --secret=adminpw --mspid OrdererMSP \
-        --ca-name tlsca  --output admin-tls-ordservice.yaml 
+kubectl hlf ca enroll --name=ordererorg1-ca \
+   --namespace=default --user=admin \
+   --secret=adminpw --mspid OrdererMSP \
+   --ca-name tlsca  \
+   --output admin-tls-ordservice.yaml 
 ```
 
 Join the orderer node with the channel block
 ```bash
-kubectl hlf ordnode join --block=demo.block --name=ordnode-1 --namespace=default --identity=admin-tls-ordservice.yaml
+kubectl hlf ordnode join --block=demo.block \
+  --name=ordnode-1 --namespace=default \
+  --identity=admin-tls-ordservice.yaml
 ```
 
 
@@ -234,8 +269,10 @@ kubectl hlf ordnode join --block=demo.block --name=ordnode-1 --namespace=default
 
 Register user
 ```bash
-kubectl hlf ca register --name=org1-ca --user=admin --secret=adminpw --type=admin \
- --enroll-id enroll --enroll-secret=enrollpw --mspid Org1MSP  
+kubectl hlf ca register --name=org1-ca \
+  --user=admin --secret=adminpw --type=admin \
+ --enroll-id enroll --enroll-secret=enrollpw \
+  --mspid Org1MSP  
 ```
 Enroll user
 ```bash
@@ -253,20 +290,23 @@ kubectl hlf utils adduser --userPath=peer-org1.yaml --config=org1.yaml --usernam
 
 Join peer to channel
 ```bash
-kubectl hlf channel join --name=demo --config=org1.yaml \
+kubectl hlf channel join --name=demo \
+   --config=org1.yaml \
     --user=admin -p=org1-peer0.default
 ```
 
 Add anchor peer for Org1MSP
 ```bash
-kubectl hlf channel addanchorpeer --channel=demo --config=org1.yaml \
-    --user=admin --peer=org1-peer0.default 
+kubectl hlf channel addanchorpeer \
+   --channel=demo --config=org1.yaml \
+   --user=admin --peer=org1-peer0.default
 ```
 
 Inspect peer heights
 ```bash
-kubectl hlf channel top --channel=demo --config=org1.yaml \
-    --user=admin -p=org1-peer0.default
+kubectl hlf channel top --channel=demo \
+   --config=org1.yaml \
+   --user=admin -p=org1-peer0.default
 ```
 
 Install chaincode
