@@ -61,7 +61,7 @@ kubectl get crds
 kubectl get pods -w
 
 # check logs if there's a problem
-kubectl logs hlf-operator-controller-manager-75dbc94f58-rvnnl -c manager -f
+kubectl logs -c manager -f hlf-operator-controller-manager-
 ```
 
 ## Blockchain network
@@ -212,7 +212,7 @@ kubectl get pods -w
 Create connection config yaml
 ```bash
 kubectl hlf inspect --output ordservice.yaml \
- -o OrdererMSP
+ -o OrdererMSP -o Org1MSP -o Org2MSP
 ```
 Register user
 ```bash
@@ -534,12 +534,6 @@ kubectl hlf chaincode query --config=org1.yaml \
 ```
 
 
-MISSING!!!!
-- Approve/Commit with the new organization
-- Test that it works
-- Add more consenters to the channel using the channel participation API
-
-
 ## Add more orderers
 
 Generate Orderer manifest for second orderer
@@ -568,8 +562,10 @@ kubectl apply -f ./resources/orderer/ordererorg1/orderer3.yaml
 ```
 Join orderer2 and orderer3
 ```bash
-kubectl hlf ordnode join --block=demo.block --name=ordnode-2 --namespace=default --identity=admin-tls-ordservice.yaml
-kubectl hlf ordnode join --block=demo.block --name=ordnode-3 --namespace=default --identity=admin-tls-ordservice.yaml
+kubectl hlf ordnode join --block=demo.block --name=ordnode-2 \
+    --namespace=default --identity=admin-tls-ordservice.yaml
+kubectl hlf ordnode join --block=demo.block --name=ordnode-3 \
+    --namespace=default --identity=admin-tls-ordservice.yaml
 ```
 
 Fetch channel config
@@ -577,3 +573,63 @@ Fetch channel config
 kubectl hlf channel inspect --channel=demo --config=org1.yaml \
    --user=admin -p=org1-peer0.default > demo.json
 ```
+
+## Add them as consenters
+
+```bash
+kubectl hlf inspect --output ordservice.yaml \
+ -o OrdererMSP -o Org1MSP -o Org2MSP
+```
+
+Register user
+```bash
+kubectl hlf ca register --name=ordererorg1-ca \
+   --user=admin --secret=adminpw \
+   --type=admin --enroll-id enroll \
+   --enroll-secret=enrollpw --mspid=OrdererMSP
+```
+Enroll user to submit the transaction
+```bash
+kubectl hlf ca enroll --name=ordererorg1-ca \
+  --user=admin --secret=adminpw --mspid OrdererMSP \
+     --ca-name ca  --output admin-ordservice.yaml
+``` 
+
+Add user from admin-ordservice.yaml to ordservice.yaml
+```bash
+kubectl hlf utils adduser --userPath=admin-ordservice.yaml --config=ordservice.yaml --username=admin --mspid=OrdererMSP
+```
+
+Add the consenter orderer 2 and generate the channel update
+```bash
+kubectl hlf channel consenter add --config=ordservice.yaml \
+    --orderers=ordnode-2.default \
+    --user=admin --channel=demo \
+    --mspid=OrdererMSP --output=add_orderers_consenter.pb
+```
+
+Submit the transaction
+```bash
+kubectl hlf channel update --channel=demo -f add_orderers_consenter.pb \
+   --config=ordservice.yaml --user=admin --mspid=OrdererMSP
+```
+
+Add the consenter orderer 3 and generate the channel update
+```bash
+kubectl hlf channel consenter add --config=ordservice.yaml \
+    --orderers=ordnode-3.default \
+    --user=admin --channel=demo \
+    --mspid=OrdererMSP --output=add_orderers_consenter.pb
+```
+Update the channel
+```bash
+kubectl hlf channel update --channel=demo -f add_orderers_consenter.pb \
+   --config=ordservice.yaml --user=admin --mspid=OrdererMSP
+```
+
+Fetch channel config and inspect the consenters
+```bash
+kubectl hlf channel inspect --channel=demo --config=org1.yaml \
+   --user=admin -p=org1-peer0.default > demo.json
+```
+
