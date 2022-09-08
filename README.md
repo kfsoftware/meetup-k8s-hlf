@@ -13,9 +13,9 @@
 
 Install the plugin from Github releases
 ```bash
-wget "https://github.com/kfsoftware/hlf-operator/releases/download/v1.4.0-beta4/hlf-operator_1.4.0-beta4_linux_amd64.zip"
+wget "https://github.com/kfsoftware/hlf-operator/releases/download/v1.7.0/hlf-operator_v1.7.0_linux_amd64.zip"
 rm -rf ./hlf-operator
-unzip hlf-operator_1.4.0-beta4_linux_amd64.zip -d hlf-operator
+unzip hlf-operator_v1.7.0_linux_amd64.zip -d hlf-operator
 chmod +x ./hlf-operator/kubectl-hlf
 sudo mv ./hlf-operator/kubectl-hlf /usr/local/bin/kubectl-hlf
 ```
@@ -55,11 +55,11 @@ helm repo add kfs https://kfsoftware.github.io/hlf-helm-charts --force-update
 
 Install chart
 ```bash
-helm install hlf-operator -f hlf-operator.yaml kfs/hlf-operator
+helm install hlf-operator --version=1.7.0 -f hlf-operator.yaml kfs/hlf-operator
 ```
 In case you change the values, you can upgrade:
 ```bash
-helm upgrade hlf-operator -f ./hlf-operator.yaml kfs/hlf-operator
+helm upgrade hlf-operator --version=1.7.0 -f ./hlf-operator.yaml kfs/hlf-operator
 ```
 
 Checks
